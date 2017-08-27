@@ -107,13 +107,13 @@ class PlotSemanticCategory(luigi.Task):
     '''This Task plots distributions of normalized counts within
     semantic categories.'''
     protocol = "semanticCategory"
-    def requires(self):
-        return FindIndirect()
+    #def requires(self):
+        #return FindIndirect()
 
-    def output(self):
-        _, __, cats = self.get_all()
-        return [luigi.LocalTarget("./pictures/{}.png".format(cat)) 
-                for cat in cats]
+    #def output(self):
+     #   _, __, cats = self.get_all()
+      #  return [luigi.LocalTarget("./new_pictures/{}.png".format(cat)) 
+       #         for cat in cats]
 
     def run(self):
         random_table_counters, nonrandom_counter, cats = self.get_all()

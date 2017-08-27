@@ -12,14 +12,17 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import random as rand
+from scipy import stats
 
 # Convenience
 from collections import Counter, defaultdict
 import pickle
 sns.set(style='darkgrid', palette='muted')
 
-LOGIN_INFO = '../leiden_login_info/auth_info_main.json'
-BASE_URI = "https://euretos-brain.com/spine-ws"
+#LOGIN_INFO = '../leiden_login_info/auth_info_main.json'
+LOGIN_INFO = '../leiden_login_info/auth_info.json'
+BASE_URI = "http://178.63.49.197:8080/spine-ws/"
+#BASE_URI = "https://euretos-brain.com/spine-ws"
 
 login_request = requests.post(BASE_URI + "/login/authenticate", 
                               json=json.load(open(LOGIN_INFO)))
@@ -164,10 +167,13 @@ def get_counters(number, protocol="semanticCategory"):
 def sem_cat_gener(table, table_number, protocol="semanticCategory"):
     ''' Generator of semantic categories lists for 
     each drug-disease pair. protocol parameter can be "semanticCategory"
-    (by default), "diversity" or "semanticType"'''
+    (by default), "diversity", "semanticType", or "predicates"'''
 #     rows = table["all_in_between"]
     for ind, row in table.iterrows():
-        sem_cat_list = list()
+        if protocol == "predicates":
+            pred_list = list()
+        else:
+            sem_cat_list = list()
         drug_count = len(row["drug_ids"])
         disease_count = len(row["disease_ids"])
         json_filename = "./indirect_jsons/{}_{}.json".format(table_number, ind)
@@ -178,32 +184,77 @@ def sem_cat_gener(table, table_number, protocol="semanticCategory"):
             
         for entry in content:
             concept = entry["concepts"][1]
+            
+            if concept["id"] in row["drug_ids"] + row["disease_ids"]:
+                print(concept["id"], row["drug_ids"] + row["disease_ids"])
+                continue
+
             if protocol == "semanticType":
                 sem_cat_list = sem_cat_list + concept["semanticTypes"]
             elif protocol == "semanticCategory" or protocol == "diversity":
                 sem_cat_list.append(concept["semanticCategory"])
-        yield sem_cat_list, drug_count, disease_count
+            elif protocol == "predicates":
+                triples1 = entry["relationships"][0]["directionalTriples"]
+                triples2 = entry["relationships"][1]["directionalTriples"]
+                pred_list.append((tuple((triple["predicate"] 
+                                         for triple in triples1)),
+                                  tuple((triple["predicate"]
+                                         for triple in triples2))))
+        if protocol == "predicates":
+            yield pred_list, drug_count, disease_count
+        else:
+            yield sem_cat_list, drug_count, disease_count
     #         if  length > 3:
     #             print(length)
     return
 
+
+def get_type_mappings():
+    type_table = pd.read_csv("./SemanticTypes_2013AA.txt", sep="|", header=None)
+    mappings = {row[1]: row[2] for _, row in type_table.iterrows()}
+    return mappings
+
+def map_keys(mappings, dickt):
+    new_dickt = SpecialCounter()
+    for key in dickt.keys():
+        if key in mappings.keys():
+            key_mapping = mappings[key]
+            new_dickt[key_mapping] = dickt[key]
+        else:
+            new_dickt[key] = dickt[key]
+    return new_dickt
+
 def get_sem_cat_counter_list(table, table_number, protocol="semanticCategory"):
     '''protocol parameter can be "semanticCategory" (by default), "diversity" or "semanticType" '''
-    assert protocol in ["semanticType", "diversity", "semanticCategory"]
+    assert protocol in ["semanticType", "diversity", "semanticCategory", "predicates"]
+    gener = sem_cat_gener(table, table_number, protocol)
 
     if protocol == "diversity":
         sem_cat_counter_list = [(SpecialCounter(sem_cat_list), drug_count * disease_count) 
                                 for sem_cat_list, drug_count, disease_count 
-                                in sem_cat_gener(table, table_number) 
+                                in gener 
                                 if drug_count * disease_count != 0]
     elif protocol == "semanticCategory":
         sem_cat_counter_list = [SpecialCounter(sem_cat_list) / (drug_count * disease_count) 
                                 for sem_cat_list, drug_count, disease_count 
-                                in sem_cat_gener(table, table_number)]
+                                in gener]
     elif protocol == "semanticType":
-        sem_cat_counter_list = [SpecialCounter(sem_cat_list) / (drug_count * disease_count) 
+        type_mappings = get_type_mappings()
+        sem_cat_counter_list = [map_keys(type_mappings, SpecialCounter(sem_cat_list) / (drug_count * disease_count)) 
                                 for sem_cat_list, drug_count, disease_count 
-                                in sem_cat_gener(table, table_number)]
+                                in gener]
+    elif protocol == "predicates":
+        big_pred_list = list()
+        for pred_list, _, __ in gener:
+            big_pred_list = big_pred_list + pred_list
+        
+        big_big_pred_list = list()
+        for layer1, layer2 in big_pred_list:
+            for pred1 in layer1:
+                for pred2 in layer2:
+                    big_big_pred_list.append("{}--->{}".format(pred1, pred2))
+        return Counter(big_big_pred_list)
+                    
     return sem_cat_counter_list
 
 def get_hist(counter_list, cat=None, bins=None):
@@ -251,7 +302,7 @@ def plot_both(cat, real_counter, randomized_counter_list):
     black_patch = mpatches.Patch(color="black", alpha=0.5, label="negative")
     plt.legend(handles=[red_patch, black_patch])
     plt.title(cat)
-    plt.savefig("./pictures/{}.png".format(cat), format="png")
+    plt.savefig("./new_pictures/{}.png".format(cat), format="png")
 
 def get_stds_avghist(counter_list, bins, cat=None):
     ''' Gets standard deviations and average bar heights
@@ -295,3 +346,8 @@ def plot_diversity(nonrandom_counter, random_counter_list):
     plt.legend(handles=[red_patch, black_patch])
     plt.xlabel("Normalised diversity of semantic categories between drug and disease")
     plt.ylabel("Count")
+
+def test_if_the_same(random_counter, real_counter, cat):
+    random_sample = [counter[cat] for counter in random_counter]
+    real_sample = [counter[cat] for counter in real_counter]
+    return stats.ks_2samp(random_sample, real_sample)
