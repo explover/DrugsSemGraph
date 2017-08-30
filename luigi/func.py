@@ -10,9 +10,10 @@ import pandas as pd
 import json
 import seaborn as sns
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
+from matplotlib.patches import mlines
 import random as rand
 from scipy import stats
+from statsmodels.nonparametric.kde import kdensity as kde
 
 # Convenience
 from collections import Counter, defaultdict
@@ -166,7 +167,7 @@ def get_counters(number, protocol="semanticCategory"):
     random_table_counters = list()
     for num in range(number):
         random_table = pd.read_hdf("./id_table_neg_%i.hdf" % num)
-        random_table["direct"] = pd.read_hdf("./direct_short_{}".format(num))
+        random_table["direct"] = pd.read_hdf("./direct_short_{}.hdf".format(num))
         counter_list = get_sem_cat_counter_list(random_table, num, protocol)
         random_table_counters.append(counter_list)
         
@@ -184,6 +185,7 @@ def sem_cat_gener(table, table_number, protocol="semanticCategory"):
             sem_cat_list = list()
         drug_count = len(row["drug_ids"])
         disease_count = len(row["disease_ids"])
+        direct = False if row["direct"] == [] else True
         json_filename = "./indirect_jsons/{}_{}.json".format(table_number, ind)
         
         with open(json_filename, "r") as json_file:
@@ -194,10 +196,11 @@ def sem_cat_gener(table, table_number, protocol="semanticCategory"):
             concept = entry["concepts"][1]
             
             if concept["id"] in row["drug_ids"] + row["disease_ids"]:
-                print(concept["id"], row["drug_ids"] + row["disease_ids"])
+                #print(concept["id"], row["drug_ids"] + row["disease_ids"])
                 continue
 
             if protocol == "semanticType":
+                print(concept)
                 sem_cat_list = sem_cat_list + concept["semanticTypes"]
             elif protocol == "semanticCategory" or protocol == "diversity":
                 sem_cat_list.append(concept["semanticCategory"])
@@ -209,9 +212,9 @@ def sem_cat_gener(table, table_number, protocol="semanticCategory"):
                                   tuple((triple["predicate"]
                                          for triple in triples2))))
         if protocol == "predicates":
-            yield pred_list, drug_count, disease_count
+            yield pred_list, drug_count, disease_count, direct
         else:
-            yield sem_cat_list, drug_count, disease_count
+            yield sem_cat_list, drug_count, disease_count, direct
     #         if  length > 3:
     #             print(length)
     return
@@ -236,34 +239,51 @@ def get_sem_cat_counter_list(table, table_number, protocol="semanticCategory"):
     '''protocol parameter can be "semanticCategory" (by default), "diversity" or "semanticType" '''
     assert protocol in ["semanticType", "diversity", "semanticCategory", "predicates"]
     gener = sem_cat_gener(table, table_number, protocol)
+    
+    direct_counter_list, nondirect_counter_list = list(), list()
+    for sem_cat_list, drug_count, disease_count, direct in gener:
 
-    if protocol == "diversity":
-        sem_cat_counter_list = [(SpecialCounter(sem_cat_list), drug_count * disease_count) 
-                                for sem_cat_list, drug_count, disease_count 
-                                in gener 
-                                if drug_count * disease_count != 0]
-    elif protocol == "semanticCategory":
-        sem_cat_counter_list = [SpecialCounter(sem_cat_list) / (drug_count * disease_count) 
-                                for sem_cat_list, drug_count, disease_count 
-                                in gener]
-    elif protocol == "semanticType":
-        type_mappings = get_type_mappings()
-        sem_cat_counter_list = [map_keys(type_mappings, SpecialCounter(sem_cat_list) / (drug_count * disease_count)) 
-                                for sem_cat_list, drug_count, disease_count 
-                                in gener]
-    elif protocol == "predicates":
-        big_pred_list = list()
-        for pred_list, _, __ in gener:
-            big_pred_list = big_pred_list + pred_list
+        if protocol == "diversity":
+            if drug_count * disease_count != 0:
+                to_append = (SpecialCounter(sem_cat_list), drug_count * disease_count) 
+            else:
+                continue
+            if direct:
+                direct_counter_list.append(to_append)
+            else:
+                nondirect_counter_list.append(to_append)
+                
+        elif protocol == "semanticCategory":
+            to_append = SpecialCounter(sem_cat_list) / (drug_count * disease_count) 
+            if direct:
+                direct_counter_list.append(to_append)
+            else:
+                nondirect_counter_list.append(to_append)
+                
+        elif protocol == "semanticType":
+            type_mappings = get_type_mappings()
+            if drug_count * disease_count != 0:
+                to_append = map_keys(type_mappings, SpecialCounter(sem_cat_list) / (drug_count * disease_count)) 
+            else:
+                continue
+            if direct:
+                direct_counter_list.append(to_append)
+            else:
+                nondirect_counter_list.append(to_append)
         
-        big_big_pred_list = list()
-        for layer1, layer2 in big_pred_list:
-            for pred1 in layer1:
-                for pred2 in layer2:
-                    big_big_pred_list.append("{}--->{}".format(pred1, pred2))
-        return Counter(big_big_pred_list)
+        elif protocol == "predicates":
+            big_pred_list = list()
+            for pred_list, _, __ in gener:
+                big_pred_list = big_pred_list + pred_list
+            
+            big_big_pred_list = list()
+            for layer1, layer2 in big_pred_list:
+                for pred1 in layer1:
+                    for pred2 in layer2:
+                        big_big_pred_list.append("{}--->{}".format(pred1, pred2))
+            return Counter(big_big_pred_list)
                     
-    return sem_cat_counter_list
+    return (direct_counter_list, nondirect_counter_list)
 
 def get_hist(counter_list, cat=None, bins=None):
     if cat is not None:
@@ -295,6 +315,31 @@ def plot_for_cat(cat, sem_cat_counter_list, color, bins, stds=None):
         
     plt.xlabel("Normalized number of semantic category occurence between drug and disease")
     plt.ylabel("Drug-disease count")
+
+def plot_dens(cat, counter_list, color, label, ls):
+    get_track_key = partial_second(Counter.__getitem__, cat)
+    track = list(map(get_track_key, counter_list))
+    min_lim = 0
+    max_lim = np.percentile(track, 90)
+    plt.xlim(0, max_lim)
+    pdf, grid, _ = kde(track, cut=0)
+    plt.plot(grid, pdf, color=color, ls=ls)
+    plt.xlabel("Normalized number of semantic category occurence between drug and disease")
+    plt.ylabel("Probability density")
+    patch = mlines.Line2D([], [], ls=ls, color=color, label=label)
+    return patch
+    
+def plot_dens_diversity(counter_list, color, label, ls):
+    diversity = [len(counter.keys()) for counter, _ in counter_list]
+    pdf, grid, _ = kde(diversity, cut=0)
+    min_lim = 0
+    max_lim = max(diversity)
+    plt.xlim(0, max_lim)
+    plt.plot(grid, pdf, color=color, ls=ls)
+    plt.xlabel("Normalised diversity of semantic categories between drug and disease")
+    plt.ylabel("Probability density")
+    patch = mlines.Line2D([], [], ls=ls, color=color, label=label) 
+    return patch
     
 def plot_both(cat, real_counter, randomized_counter_list):
     ''' Plots both random and nonrandom distributions 
