@@ -145,11 +145,11 @@ class PlotDistributions(luigi.Task):
             plt.figure()
 
             patch1 = func.plot_dens(cat, direct_real, color="red", label="direct real", ls="solid") 
-            patch2 = func.plot_dens(cat, nondirect_real, color="red", label="nondirect real", ls="dashed") 
+            #patch2 = func.plot_dens(cat, nondirect_real, color="red", label="nondirect real", ls="dashed") 
             patch3 = func.plot_dens(cat, direct_random, color="blue", label="direct random", ls="solid") 
             patch4 = func.plot_dens(cat, nondirect_random, color="blue", label="nondirect random", ls="dashed") 
 
-            plt.legend(handles = [patch1, patch2, patch3, patch4])
+            plt.legend(handles = [patch1, patch3, patch4])
             plt.title(cat)
             plt.savefig("./{}_density_pictures/{}.png".format(self.protocol, cat), format="png")
             plt.close()
@@ -198,11 +198,11 @@ class PlotDiversity(luigi.Task):
         plt.figure()
 
         patch1 = func.plot_dens_diversity(direct_real, color="red", label="direct real", ls="solid") 
-        patch2 = func.plot_dens_diversity(nondirect_real, color="red", label="nondirect real", ls="dashed") 
+        #patch2 = func.plot_dens_diversity(nondirect_real, color="red", label="nondirect real", ls="dashed") 
         patch3 = func.plot_dens_diversity(direct_random, color="blue", label="direct random", ls="solid") 
         patch4 = func.plot_dens_diversity(nondirect_random, color="blue", label="nondirect random", ls="dashed") 
 
-        plt.legend(handles = [patch1, patch2, patch3, patch4])
+        plt.legend(handles = [patch1, patch3, patch4])
         plt.title("Diversity")
         plt.savefig("./{}_density_pictures/diversity.png".format(self.protocol), format="png")
         plt.close()
