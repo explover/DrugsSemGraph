@@ -210,7 +210,8 @@ def sem_cat_gener(table, table_number, protocol="semanticCategory"):
                 pred_list.append((tuple((triple["predicate"] 
                                          for triple in triples1)),
                                   tuple((triple["predicate"]
-                                         for triple in triples2))))
+                                         for triple in triples2)),
+                                  tuple(concept["semanticTypes"])))
         if protocol == "predicates":
             yield pred_list, drug_count, disease_count, direct
         else:
@@ -254,7 +255,10 @@ def get_sem_cat_counter_list(table, table_number, protocol="semanticCategory"):
                 nondirect_counter_list.append(to_append)
                 
         elif protocol == "semanticCategory":
-            to_append = SpecialCounter(sem_cat_list) / (drug_count * disease_count) 
+            if drug_count * disease_count != 0:
+                to_append = SpecialCounter(sem_cat_list) / (drug_count * disease_count) 
+            else:
+                continue
             if direct:
                 direct_counter_list.append(to_append)
             else:
@@ -272,16 +276,23 @@ def get_sem_cat_counter_list(table, table_number, protocol="semanticCategory"):
                 nondirect_counter_list.append(to_append)
         
         elif protocol == "predicates":
+            gener = sem_cat_gener(table, table_number, protocol)
             big_pred_list = list()
-            for pred_list, _, __ in gener:
+            for pred_list, _, __, ___ in gener:
                 big_pred_list = big_pred_list + pred_list
             
-            big_big_pred_list = list()
-            for layer1, layer2 in big_pred_list:
+            pred_dict = defaultdict(list)
+            for layer1, layer2, semTypes in big_pred_list:
                 for pred1 in layer1:
                     for pred2 in layer2:
-                        big_big_pred_list.append("{}--->{}".format(pred1, pred2))
-            return Counter(big_big_pred_list)
+                        for semType in semTypes:
+                            pred_dict[semType].append("{}--->{}".format(pred1, pred2))
+
+            pred_dict = {key: Counter(value) for key, value in pred_dict.items()}
+            mappings = get_type_mappings()
+            mapped_pred_dict = map_keys(mappings, pred_dict)
+
+            return mapped_pred_dict
                     
     return (direct_counter_list, nondirect_counter_list)
 
