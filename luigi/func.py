@@ -18,6 +18,7 @@ from statsmodels.nonparametric.kde import kdensity as kde
 # Convenience
 from collections import Counter, defaultdict
 import pickle
+from tqdm import tqdm
 sns.set(style='darkgrid', palette='muted')
 
 LOGIN_INFO = '../leiden_login_info/auth_info_main.json'
@@ -47,6 +48,9 @@ def partial_second(f, second):
 def average(lst):
     return sum(lst) / len(lst)
 
+def list_not_empty(series):
+    return pd.Series(map(len, series)) != 0
+
 def return_disease_ids(row):
     '''Returns Euretos disease IDs when applied to a table 
     with column containing disease names'''
@@ -54,7 +58,7 @@ def return_disease_ids(row):
     disease_request = requests.post(BASE_URI + "/external/concepts/search",
                                 json={
                                     "additionalFields": [],
-                                    "queryString": "term:'%s' AND semanticcategory:'Disorders'" % (row['Disease']),
+                                    "queryString": "term:'%s' AND semanticcategory:'Disorders'" % (row['disease_id']),
                                     "searchType": "TOKEN"
                                 },
                                 headers=headers)
@@ -69,7 +73,7 @@ def return_drug_ids(row):
     drug_request = requests.post(BASE_URI + "/external/concepts/search",
                              json={
                                  "additionalFields": [],
-                                 "queryString": "term:'%s'" % (row['Drugbank ID']),
+                                 "queryString": "term:'%s'" % (row['drug_id']),
                                  "semanticcategory": "Drug",
                                  "searchType": "TOKEN",
                                  "knowledgebase": "drugbank"
@@ -119,7 +123,7 @@ def mark_if_direct(row):
     else:
         return False
 
-def get_indirect(row, table_number, row_number, filt=None):
+def get_indirect(row, table_number, row_number, data_path, filt=None):
     drug_ids = list(map(str, row['drug_ids']))
     disease_ids = list(map(str, row['disease_ids']))
     json_drug = {
@@ -132,7 +136,7 @@ def get_indirect(row, table_number, row_number, filt=None):
     }
     print('*', end="")
     resp = rq.post(BASE_URI + "/external/concept-to-concept/indirect?size=10000", json=json_drug, headers=headers)
-    filename = "./indirect_jsons/{}_{}.json".format(table_number, row_number)
+    filename = f"{data_path}/indirect_jsons/{table_number}_{row_number}.json"
     with open(filename, "w") as file_for_json:
         json.dump(resp.json(), file_for_json)
     return
@@ -173,20 +177,20 @@ def get_counters(number, protocol="semanticCategory"):
         
     return random_table_counters
 
-def sem_cat_gener(table, table_number, protocol="semanticCategory"):
+def sem_cat_gener(table, table_number, data_path, protocol="semanticCategory"):
     ''' Generator of semantic categories lists for 
     each drug-disease pair. protocol parameter can be "semanticCategory"
     (by default), "diversity", "semanticType", or "predicates"'''
 #     rows = table["all_in_between"]
-    for ind, row in table.iterrows():
+    for ind, row in tqdm(table.iterrows()):
         if protocol == "predicates":
             pred_list = list()
         else:
             sem_cat_list = list()
         drug_count = len(row["drug_ids"])
         disease_count = len(row["disease_ids"])
-        direct = False if row["direct"] == [] else True
-        json_filename = "./indirect_jsons/{}_{}.json".format(table_number, ind)
+#       direct = False if row["direct"] == [] else True
+        json_filename = f"{data_path}/indirect_jsons/{table_number}_{ind}.json"
         
         with open(json_filename, "r") as json_file:
             all_in_between = json.load(json_file)
@@ -200,7 +204,6 @@ def sem_cat_gener(table, table_number, protocol="semanticCategory"):
                 continue
 
             if protocol == "semanticType":
-                print(concept)
                 sem_cat_list = sem_cat_list + concept["semanticTypes"]
             elif protocol == "semanticCategory" or protocol == "diversity":
                 sem_cat_list.append(concept["semanticCategory"])
@@ -213,17 +216,54 @@ def sem_cat_gener(table, table_number, protocol="semanticCategory"):
                                          for triple in triples2)),
                                   tuple(concept["semanticTypes"])))
         if protocol == "predicates":
-            yield pred_list, drug_count, disease_count, direct
+            yield pred_list, drug_count, disease_count#, direct
         else:
-            yield sem_cat_list, drug_count, disease_count, direct
+            mappings = get_type_mappings(data_path)
+            sem_cat_list = [mappings.get(elm, "T9998") for elm in sem_cat_list]
+            yield sem_cat_list, drug_count, disease_count#, direct
     #         if  length > 3:
     #             print(length)
     return
 
+def get_feature_table(table, table_number, semgroups_filename, data_path):
+    semgroups_table = pd.read_csv(semgroups_filename, sep="|", header=None)
+    semgroups_table.columns=["what", "SemCat", "SemTypeID", "SemType"]
+    div_types = list(semgroups_table.groupby("SemCat").groups.keys())
 
-def get_type_mappings():
-    type_table = pd.read_csv("./SemanticTypes_2013AA.txt", sep="|", header=None)
-    mappings = {row[1]: row[2] for _, row in type_table.iterrows()}
+    gener = sem_cat_gener(table, table_number, data_path, protocol="semanticType")
+
+    counter_list = [Counter(sem_cat_list)
+                    for sem_cat_list, _, __ in gener]
+
+    count_types = set()
+    diversity_cats = set()
+    for counter in counter_list:
+        count_types |= set(counter.keys())
+    count_types = list(count_types)
+
+    feature_table = pd.DataFrame(columns=count_types + div_types)
+    for ind, counter in enumerate(counter_list):
+        types = counter.keys()
+        row_dict = {key: counter.get(key, 0) for key in count_types}
+        row_dict.update(compute_diversity(semgroups_table, types))
+        feature_table.loc[ind] = row_dict
+
+    return feature_table
+
+def compute_diversity(semgroups_table, types):
+    group_dict = semgroups_table.groupby("SemCat").groups
+    for key in group_dict:
+        group_dict[key] = set(semgroups_table.iloc[group_dict[key]]["SemType"])
+
+    diversities = dict()
+    for key in group_dict:
+        diversities[key] = len(group_dict[key] & set(types))
+        
+    return diversities
+
+def get_type_mappings(data_path):
+    type_table = pd.read_csv(f"{data_path}/SemGroups.txt", sep="|", header=None)
+    mappings = {row[2]: row[3] for _, row in type_table.iterrows()}
     return mappings
 
 def map_keys(mappings, dickt):
