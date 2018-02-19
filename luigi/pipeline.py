@@ -23,7 +23,7 @@ class RetrieveIDs(luigi.Task):
     
     
     def run(self):
-        dsets = ["neg"]#["pos", "neg"]
+        dsets = ["pos", "neg"]
         for dset in dsets:
             table = pd.read_csv(f"{self.data_path}/{dset}.csv")
             print(table)
@@ -134,14 +134,19 @@ class GetFeatureTables(luigi.Task):
                 for dset in ["pos", "neg"]]
 
     def run(self):
-        dsets = ["pos", "neg"]
+        dsets = ["neg", "pos"]
         for dset in tqdm(dsets):
             id_table = pd.read_hdf(f"{self.data_path}/id_table_{dset}.hdf", 'w')
-            id_table.index = range(len(id_table))
+            dset_table = pd.read_csv(f"{self.data_path}/{dset}.csv")
+            #id_table.index = range(len(id_table))
             semgroups_filename = f"{self.data_path}/SemGroups.txt"
             feature_table = func.get_feature_table(id_table, dset, 
                                                    semgroups_filename,
                                                    self.data_path)
+            to_append = id_table
+            to_append["drug_id"], to_append["disease_id"] = dset_table["drug_id"], dset_table["disease_id"]
+            feature_table = pd.merge(to_append, feature_table, right_index=True,
+                                     left_index=True)
             feature_table.to_csv(f"{self.data_path}/feature_table_{dset}.csv",
                                  index=False)
         

@@ -58,7 +58,8 @@ def return_disease_ids(row):
     disease_request = requests.post(BASE_URI + "/external/concepts/search",
                                 json={
                                     "additionalFields": [],
-                                    "queryString": "term:'%s' AND semanticcategory:'Disorders'" % (row['disease_id']),
+                                    "queryString": "term:'%s'" % (row['disease_id']),
+                                    #"queryString": "term:'%s' AND semanticcategory:'Disorders'" % (row['disease_id']),
                                     "searchType": "TOKEN"
                                 },
                                 headers=headers)
@@ -182,7 +183,7 @@ def sem_cat_gener(table, table_number, data_path, protocol="semanticCategory"):
     each drug-disease pair. protocol parameter can be "semanticCategory"
     (by default), "diversity", "semanticType", or "predicates"'''
 #     rows = table["all_in_between"]
-    for ind, row in tqdm(table.iterrows()):
+    for ind, (_, row) in tqdm(enumerate(table.iterrows())):
         if protocol == "predicates":
             pred_list = list()
         else:
@@ -247,6 +248,7 @@ def get_feature_table(table, table_number, semgroups_filename, data_path):
         row_dict = {key: counter.get(key, 0) for key in count_types}
         row_dict.update(compute_diversity(semgroups_table, types))
         feature_table.loc[ind] = row_dict
+    feature_table.index = table.index
 
     return feature_table
 
