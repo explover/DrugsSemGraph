@@ -26,8 +26,8 @@ class RetrieveIDs(luigi.Task):
         for dset in dsets:
             table = pd.read_csv(f"{self.data_path}/{dset}.csv")
             print(table)
-            disease_ids = table.apply(func.return_disease_ids, axis=1)
             drug_ids = table.apply(func.return_drug_ids, axis=1)
+            disease_ids = table.apply(func.return_disease_ids, axis=1)
             combined_ids = pd.DataFrame(index=disease_ids.index)
             combined_ids["disease_ids"] = disease_ids
             combined_ids["drug_ids"] = drug_ids
@@ -90,6 +90,7 @@ class FindIndirect(luigi.Task):
             with open(f"{self.data_path}/{dset}_num.pkl", "rb") as num_file:
                 num = pkl.load(num_file)
             num_dict[dset] = num
+        print(num_dict)
         return [luigi.LocalTarget(f"{self.data_path}/indirect_jsons/{dset}_{row_number}.json") 
                 for dset in ["pos", "neg"]
                 for row_number in range(num_dict[dset])]
@@ -124,7 +125,7 @@ class GetFeatureTables(luigi.Task):
                                                    semgroups_filename,
                                                    self.data_path)
             to_append = id_table
-            to_append["drug_id"], to_append["disease_id"] = dset_table["drug_id"], dset_table["disease_id"]
+            to_append["CUIs"], to_append["disease_id"] = dset_table["CUIs"], dset_table["disease_id"]
             feature_table = pd.merge(to_append, feature_table, right_index=True,
                                      left_index=True)
             feature_table.to_csv(f"{self.data_path}/feature_table_{dset}.csv",

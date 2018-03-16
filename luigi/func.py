@@ -70,14 +70,15 @@ def return_disease_ids(row):
 def return_drug_ids(row):
     '''Returns Euretos drug IDs when applied to a table with column 
     containing Drugbank IDs'''
-
+    cuis = eval(row["CUIs"])
+    query = " OR ".join([f"term:'{cui}'" for cui in cuis])
+    print(query)
     drug_request = requests.post(BASE_URI + "/external/concepts/search",
                              json={
                                  "additionalFields": [],
-                                 "queryString": "term:'%s'" % (row['drug_id']),
-                                 "semanticcategory": "Drug",
+                                 "queryString": query,
+                                 #"queryString": "term:'%s'" % (row['drug_id']),
                                  "searchType": "TOKEN",
-                                 "knowledgebase": "drugbank"
                              },
                              headers=headers)
     drug_ids = [drugs["id"] for drugs in drug_request.json()["content"]]
