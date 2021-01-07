@@ -31,7 +31,7 @@ keyrings.alt==2.2
 lockfile==0.12.2
 louis==3.3.0
 luigi==2.7.1
-lxml==4.1.1
+lxml==4.6.2
 Mako==1.0.7
 Markdown==2.6.11
 MarkupSafe==1.0
