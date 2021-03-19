@@ -24,7 +24,7 @@ html5lib==0.9999999
 httplib2==0.9.2
 idna==2.6
 jedi==0.11.1
-Jinja2==2.10
+Jinja2==2.11.3
 jsonschema==2.6.0
 keyring==10.5.1
 keyrings.alt==2.2
