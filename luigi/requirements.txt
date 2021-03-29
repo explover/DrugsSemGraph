@@ -64,7 +64,7 @@ pycairo==1.15.4
 pycrypto==2.6.1
 pycups==1.9.73
 pycurl==7.43.0
-Pygments==2.2.0
+Pygments==2.7.4
 pygobject==3.26.1
 pyparsing==2.2.0
 pysmbc==1.0.15.6
