@@ -32,7 +32,7 @@ lockfile==0.12.2
 louis==3.3.0
 luigi==2.7.1
 lxml==4.1.1
-Mako==1.0.7
+Mako==1.2.2
 Markdown==2.6.11
 MarkupSafe==1.0
 matplotlib==2.1.1
