@@ -2,7 +2,7 @@ appdirs==1.4.3
 asn1crypto==0.24.0
 bleach==1.5.0
 Brlapi==0.6.6
-certifi==2017.11.5
+certifi==2022.12.7
 chardet==3.0.4
 chrome-gnome-shell==0.0.0
 colorama==0.3.9
